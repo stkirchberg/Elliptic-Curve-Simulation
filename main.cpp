@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <cstdint>
 #include <SFML/Graphics.hpp>
 using namespace std;
 using namespace sf;
@@ -359,7 +360,7 @@ int main(){
                 Text inf(font);
                 inf.setString("R = inf");
                 inf.setCharacterSize(16);
-                inf.setFillColor(Color(213,226,240, (static_cast<std::uint8_t>)(al*255)));
+                inf.setFillColor(Color(213,226,240, static_cast<std::uint8_t>(al*255)));
                 auto s=S(px,0);
                 inf.setPosition(Vector2f(s.x-20, 64));
                 win.draw(inf);
@@ -372,13 +373,13 @@ int main(){
                 halo.setOrigin(Vector2f(10,10));
                 halo.setPosition(s);
                 halo.setFillColor(Color::Transparent);
-                halo.setOutlineColor(Color(198,214,228, (Uint8)(110*al)));
+                halo.setOutlineColor(Color(198,214,228, static_cast<std::uint8_t>(110*al)));
                 halo.setOutlineThickness(1);
                 win.draw(halo);
-                disc(win, s, 5, Color(228,237,245,(Uint8)(255*al)), Color(142,168,192));
+                disc(win, s, 5, Color(228,237,245,static_cast<std::uint8_t>(255*al)), Color(142,168,192));
                 Text lab(font); lab.setString("R");
                 lab.setCharacterSize(16); lab.setStyle(Text::Italic);
-                lab.setFillColor(Color(215,226,238,(Uint8)(255*al)));
+                lab.setFillColor(Color(215,226,238,static_cast<std::uint8_t>(255*al)));
                 lab.setPosition(Vector2f(s.x+10, s.y-22));
                 win.draw(lab);
             }
