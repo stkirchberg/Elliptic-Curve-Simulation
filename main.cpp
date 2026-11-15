@@ -142,7 +142,10 @@ int main(){
 
     Font font;
     // dejavu liegt auf den meisten linuxen, sonst bleibt die schrift halt default
-    font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
+    if (!font.openFromFile("/usr/share/fonts/TTF/DejaVuSerif.ttf")) {
+        cerr << "Failed to load font\n";
+        return 1;
+    }
 
     Clock clk;
     string as = "-1", bs = "1";
