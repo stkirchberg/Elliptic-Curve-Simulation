@@ -142,7 +142,7 @@ int main(){
 
     Font font;
     // dejavu liegt auf den meisten linuxen, sonst bleibt die schrift halt default
-    if (!font.openFromFile("/usr/share/fonts/TTF/DejaVuSerif.ttf")) {
+    if(!font.openFromFile("/usr/share/fonts/TTF/DejaVuSerif.ttf")){
         cerr << "Failed to load font\n";
         return 1;
     }
@@ -150,6 +150,7 @@ int main(){
     Clock clk;
     string as = "-1", bs = "1";
     int editing = 0; // 1 = a, 2 = b
+    bool editFresh = 0;
 
     while(win.isOpen()){
         int W = win.getSize().x, H = win.getSize().y;
@@ -179,16 +180,36 @@ int main(){
             const auto* mousePressed = e->getIf<Event::MouseButtonPressed>();
             if(mousePressed && mousePressed->button==Mouse::Button::Left){
                 int mx=mousePressed->position.x, my=mousePressed->position.y;
+                string eq = "y^2 = x^3 + (" + as + ")x + (" + bs + ")";
+                Text et(font);
+                et.setString(eq);
+                et.setCharacterSize(18);
+                et.setPosition(Vector2f(78,24));
+                size_t aStart = string("y^2 = x^3 + (").size();
+                size_t aEnd = aStart + as.size();
+                size_t bStart = aEnd + string(")x + (").size();
+                size_t bEnd = bStart + bs.size();
+                Vector2f aLeft = et.findCharacterPos(aStart-1);
+                Vector2f aRight = et.findCharacterPos(aEnd+1);
+                Vector2f bLeft = et.findCharacterPos(bStart-1);
+                Vector2f bRight = et.findCharacterPos(bEnd+1);
+                bool formulaY = my>=18 && my<=52;
+                bool hitA = formulaY && mx>=min(aLeft.x,aRight.x)-4 && mx<=max(aLeft.x,aRight.x)+4;
+                bool hitB = formulaY && mx>=min(bLeft.x,bRight.x)-4 && mx<=max(bLeft.x,bRight.x)+4;
                 // play button, oben links
                 if(mx<58 && my<58){
-                    playing=1; cons=0; anim0=clk.getElapsedTime().asSeconds();
+                    playing=1; cons=0; anim0=clk.getElapsedTime().asSeconds(); editing=0; editFresh=0;
+                }else if(hitA){
+                    editing=1; editFresh=1; playing=0; cons=0;
+                }else if(hitB){
+                    editing=2; editFresh=1; playing=0; cons=0;
                 }else{
                     auto sp=S(px,py), sq=S(qx,qy);
                     double dp=hypot(sp.x-mx, sp.y-my);
                     double dq=hypot(sq.x-mx, sq.y-my);
-                    if(dp<16 && dp<=dq){ drag=1; playing=0; cons=0; }
-                    else if(dq<16){ drag=2; playing=0; cons=0; }
-                    else { drag=3; lx=mx; ly=my; }
+                    if(dp<16 && dp<=dq){ drag=1; playing=0; cons=0; editing=0; editFresh=0; }
+                    else if(dq<16){ drag=2; playing=0; cons=0; editing=0; editFresh=0; }
+                    else { drag=3; lx=mx; ly=my; editing=0; editFresh=0; }
                 }
             }
             if(mousePressed && mousePressed->button==Mouse::Button::Right){
@@ -216,6 +237,10 @@ int main(){
             }
             const auto* keyPressed = e->getIf<Event::KeyPressed>();
             if(keyPressed){
+                if(keyPressed->code==Keyboard::Key::Enter || keyPressed->code==Keyboard::Key::Escape){
+                    editing=0;
+                    editFresh=0;
+                }
                 if(keyPressed->code==Keyboard::Key::Equal){
                     double mx=W/2.0, my=H/2.0, wx=(mx-ox)/sc, wy=(oy-my)/sc;
                     sc=min(1e6, sc*1.18);
@@ -236,8 +261,13 @@ int main(){
             if(const auto* textEntered = e->getIf<Event::TextEntered>(); textEntered && editing){
                 char c = (char)textEntered->unicode;
                 string &s = editing==1 ? as : bs;
-                if(c==8 || c==127){ if(s.size()) s.pop_back(); }
-                else if((c>='0'&&c<='9')||c=='-'||c=='.'||c==',') s.push_back(c==','?'.':c);
+                if(c==8 || c==127){
+                    if(editFresh){ s.clear(); editFresh=0; }
+                    else if(s.size()) s.pop_back();
+                }else if((c>='0'&&c<='9')||c=='-'||c=='.'||c==','){
+                    if(editFresh){ s.clear(); editFresh=0; }
+                    s.push_back(c==','?'.':c);
+                }
                 char *end=0;
                 double v = strtod(s.c_str(), &end);
                 if(end && *end==0 && s.size() && s!="-" && s!="." && s!="-."){
@@ -247,8 +277,8 @@ int main(){
                 }
             }
             // a / b umschalten: taste A oder B, bisschen billig aber ohne slider
-            if(keyPressed && keyPressed->code==Keyboard::Key::A) editing = editing==1?0:1;
-            if(keyPressed && keyPressed->code==Keyboard::Key::B) editing = editing==2?0:2;
+            if(keyPressed && keyPressed->code==Keyboard::Key::A){ editing = editing==1?0:1; editFresh=editing!=0; }
+            if(keyPressed && keyPressed->code==Keyboard::Key::B){ editing = editing==2?0:2; editFresh=editing!=0; }
         }
 
         // bg
@@ -277,20 +307,66 @@ int main(){
 
         // kurve, pro spalte
         VertexArray up(PrimitiveType::LineStrip), dn(PrimitiveType::LineStrip);
-        for(int sx=0; sx<=W; sx++){
-            double x = (sx - ox)/sc;
-            double r = f(x);
-            if(r<0 || !isfinite(r)){
-                if(up.getVertexCount()){ win.draw(up); up.clear(); }
-                if(dn.getVertexCount()){ win.draw(dn); dn.clear(); }
-                continue;
+        auto drawCurve = [&](){
+            if(up.getVertexCount()) win.draw(up);
+            if(dn.getVertexCount()) win.draw(dn);
+            up.clear(); dn.clear();
+        };
+        auto crossing = [&](double x1, double x2, double r1, double r2){
+            if(r1==0) return x1;
+            if(r2==0) return x2;
+            double lo=x1, hi=x2, flo=r1;
+            for(int i=0;i<48;i++){
+                double mid=(lo+hi)*0.5;
+                double fm=f(mid);
+                if((flo<0)==(fm<0)){ lo=mid; flo=fm; }
+                else hi=mid;
             }
-            double yy=sqrt(r);
-            up.append({S(x, yy), Color(197,213,230)});
-            dn.append({S(x,-yy), Color(197,213,230)});
+            return (lo+hi)*0.5;
+        };
+        vector<double> samples;
+        samples.reserve(W+3);
+        for(int sx=0; sx<=W; sx++) samples.push_back((sx-ox)/sc);
+        if(a<0){
+            double c=sqrt(-a/3.0);
+            if(-c>=xL && -c<=xR) samples.push_back(-c);
+            if(c>=xL && c<=xR) samples.push_back(c);
         }
-        if(up.getVertexCount()) win.draw(up);
-        if(dn.getVertexCount()) win.draw(dn);
+        sort(samples.begin(), samples.end());
+        bool havePrev=0, prevValid=0;
+        double prevX=0, prevR=0;
+        for(double x : samples){
+            double r = f(x);
+            if(isfinite(r)){
+                double tol=1e-12*(1+fabs(x*x*x)+fabs(a*x)+fabs(b));
+                if(fabs(r)<tol) r=0;
+            }
+            bool valid = isfinite(r) && r>=0;
+            if(valid){
+                if(havePrev && !prevValid && isfinite(prevR) && prevR<0){
+                    double xr=crossing(prevX,x,prevR,r);
+                    Vector2f sr=S(xr,0);
+                    up.append({sr, Color(197,213,230)});
+                    dn.append({sr, Color(197,213,230)});
+                }
+                double yy=sqrt(max(0.0,r));
+                up.append({S(x, yy), Color(197,213,230)});
+                dn.append({S(x,-yy), Color(197,213,230)});
+            }else{
+                if(havePrev && prevValid && isfinite(r)){
+                    double xr=crossing(prevX,x,prevR,r);
+                    Vector2f sr=S(xr,0);
+                    up.append({sr, Color(197,213,230)});
+                    dn.append({sr, Color(197,213,230)});
+                }
+                drawCurve();
+            }
+            havePrev=1;
+            prevValid=valid;
+            prevX=x;
+            prevR=r;
+        }
+        drawCurve();
 
         Pnt P{px,py,0}, Q{qx,qy,0};
         auto sp=S(px,py), sq=S(qx,qy);
