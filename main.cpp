@@ -104,15 +104,15 @@ void snapPt(int mx, int my, int W, int H, double &x, double &y){
 }
 
 void line(RenderWindow &w, Vector2f A, Vector2f B, Color c, float th=1.2f){
-    Vertex v[2] = { Vertex(A,c), Vertex(B,c) };
+    Vertex v[2] = { {A,c}, {B,c} };
     // sfml 2: thickness geht so nicht, also duenne linie. reicht.
-    w.draw(v, 2, Lines);
+    w.draw(v, 2, PrimitiveType::Lines);
     (void)th;
 }
 
 void disc(RenderWindow &w, Vector2f p, float rad, Color fill, Color out){
     CircleShape c(rad);
-    c.setOrigin(rad, rad);
+    c.setOrigin(Vector2f(rad, rad));
     c.setPosition(p);
     c.setFillColor(fill);
     c.setOutlineColor(out);
@@ -136,12 +136,12 @@ int main(){
     px = -1.2; py = sqrt(max(0.0, f(px)));
     qx =  1.5; qy = sqrt(max(0.0, f(qx)));
 
-    RenderWindow win(VideoMode(1100, 720), "ec");
+    RenderWindow win(VideoMode({1100, 720}), "ec");
     win.setFramerateLimit(60);
 
     Font font;
     // dejavu liegt auf den meisten linuxen, sonst bleibt die schrift halt default
-    font.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
+    font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
 
     Clock clk;
     string as = "-1", bs = "1";
@@ -159,22 +159,22 @@ int main(){
             fit = 1;
         }
 
-        Event e;
-        while(win.pollEvent(e)){
-            if(e.type==Event::Closed) win.close();
-            if(e.type==Event::Resized){
-                win.setView(View(FloatRect(0,0,e.size.width, e.size.height)));
+        while(const auto e = win.pollEvent()){
+            if(e->is<Event::Closed>()) win.close();
+            if(const auto* resized = e->getIf<Event::Resized>()){
+                win.setView(View(FloatRect(Vector2f(0,0), Vector2f(resized->size.x, resized->size.y))));
             }
-            if(e.type==Event::MouseWheelScrolled){
-                double mx=e.mouseWheelScroll.x, my=e.mouseWheelScroll.y;
+            if(const auto* wheel = e->getIf<Event::MouseWheelScrolled>()){
+                double mx=wheel->position.x, my=wheel->position.y;
                 double wx=(mx-ox)/sc, wy=(oy-my)/sc;
-                double fct = exp(e.mouseWheelScroll.delta * 0.12);
+                double fct = exp(wheel->delta * 0.12);
                 sc = min(1e6, max(1e-16, sc*fct));
                 ox = mx - wx*sc;
                 oy = my + wy*sc;
             }
-            if(e.type==Event::MouseButtonPressed && e.mouseButton.button==Mouse::Left){
-                int mx=e.mouseButton.x, my=e.mouseButton.y;
+            const auto* mousePressed = e->getIf<Event::MouseButtonPressed>();
+            if(mousePressed && mousePressed->button==Mouse::Button::Left){
+                int mx=mousePressed->position.x, my=mousePressed->position.y;
                 // play button, oben links
                 if(mx<58 && my<58){
                     playing=1; cons=0; anim0=clk.getElapsedTime().asSeconds();
@@ -187,13 +187,13 @@ int main(){
                     else { drag=3; lx=mx; ly=my; }
                 }
             }
-            if(e.type==Event::MouseButtonPressed && e.mouseButton.button==Mouse::Right){
-                int mx=e.mouseButton.x, my=e.mouseButton.y;
+            if(mousePressed && mousePressed->button==Mouse::Button::Right){
+                int mx=mousePressed->position.x, my=mousePressed->position.y;
                 auto sp=S(px,py), sq=S(qx,qy);
                 if(hypot(sp.x-mx,sp.y-my)<16) { py=-py; playing=0; cons=0; }
                 else if(hypot(sq.x-mx,sq.y-my)<16){ qy=-qy; playing=0; cons=0; }
             }
-            if(e.type==Event::MouseButtonReleased){
+            if(e->is<Event::MouseButtonReleased>()){
                 if(drag==1 || drag==2){
                     auto sp=S(px,py), sq=S(qx,qy);
                     if(hypot(sp.x-sq.x, sp.y-sq.y)<14){
@@ -203,33 +203,34 @@ int main(){
                 }
                 drag=0;
             }
-            if(e.type==Event::MouseMoved && drag){
-                int mx=e.mouseMove.x, my=e.mouseMove.y;
+            if(const auto* mouseMoved = e->getIf<Event::MouseMoved>(); mouseMoved && drag){
+                int mx=mouseMoved->position.x, my=mouseMoved->position.y;
                 if(drag==3){
                     ox += mx-lx; oy += my-ly; lx=mx; ly=my;
                 }else if(drag==1) snapPt(mx,my,W,H,px,py);
                 else if(drag==2) snapPt(mx,my,W,H,qx,qy);
             }
-            if(e.type==Event::KeyPressed){
-                if(e.key.code==Keyboard::Equal){
+            const auto* keyPressed = e->getIf<Event::KeyPressed>();
+            if(keyPressed){
+                if(keyPressed->code==Keyboard::Key::Equal){
                     double mx=W/2.0, my=H/2.0, wx=(mx-ox)/sc, wy=(oy-my)/sc;
                     sc=min(1e6, sc*1.18);
                     ox=mx-wx*sc; oy=my+wy*sc;
                 }
-                if(e.key.code==Keyboard::Hyphen){
+                if(keyPressed->code==Keyboard::Key::Hyphen){
                     double mx=W/2.0, my=H/2.0, wx=(mx-ox)/sc, wy=(oy-my)/sc;
                     sc=max(1e-16, sc/1.18);
                     ox=mx-wx*sc; oy=my+wy*sc;
                 }
                 // doppelklick-ersatz
-                if(e.key.code==Keyboard::R){
+                if(keyPressed->code==Keyboard::Key::R){
                     sc = min(W,H)/6.2;
                     ox = W*0.5 - 0.2*sc;
                     oy = H*0.5 + 0.05*sc;
                 }
             }
-            if(e.type==Event::TextEntered && editing){
-                char c = (char)e.text.unicode;
+            if(const auto* textEntered = e->getIf<Event::TextEntered>(); textEntered && editing){
+                char c = (char)textEntered->unicode;
                 string &s = editing==1 ? as : bs;
                 if(c==8 || c==127){ if(s.size()) s.pop_back(); }
                 else if((c>='0'&&c<='9')||c=='-'||c=='.'||c==',') s.push_back(c==','?'.':c);
@@ -242,8 +243,8 @@ int main(){
                 }
             }
             // a / b umschalten: taste A oder B, bisschen billig aber ohne slider
-            if(e.type==Event::KeyPressed && e.key.code==Keyboard::A) editing = editing==1?0:1;
-            if(e.type==Event::KeyPressed && e.key.code==Keyboard::B) editing = editing==2?0:2;
+            if(keyPressed && keyPressed->code==Keyboard::Key::A) editing = editing==1?0:1;
+            if(keyPressed && keyPressed->code==Keyboard::Key::B) editing = editing==2?0:2;
         }
 
         // bg
@@ -271,7 +272,7 @@ int main(){
         }
 
         // kurve, pro spalte
-        VertexArray up(LineStrip), dn(LineStrip);
+        VertexArray up(PrimitiveType::LineStrip), dn(PrimitiveType::LineStrip);
         for(int sx=0; sx<=W; sx++){
             double x = (sx - ox)/sc;
             double r = f(x);
@@ -281,8 +282,8 @@ int main(){
                 continue;
             }
             double yy=sqrt(r);
-            up.append(Vertex(S(x, yy), Color(197,213,230)));
-            dn.append(Vertex(S(x,-yy), Color(197,213,230)));
+            up.append({S(x, yy), Color(197,213,230)});
+            dn.append({S(x,-yy), Color(197,213,230)});
         }
         if(up.getVertexCount()) win.draw(up);
         if(dn.getVertexCount()) win.draw(dn);
@@ -355,13 +356,12 @@ int main(){
         if(R.inf || vert){
             float al = playing ? (float)clampd((u-0.5)/0.28) : 0.9f;
             if(al>0.05f){
-                Text inf;
-                inf.setFont(font);
+                Text inf(font);
                 inf.setString("R = inf");
                 inf.setCharacterSize(16);
-                inf.setFillColor(Color(213,226,240, (Uint8)(al*255)));
+                inf.setFillColor(Color(213,226,240, (static_cast<std::uint8_t>)(al*255)));
                 auto s=S(px,0);
-                inf.setPosition(s.x-20, 64);
+                inf.setPosition(Vector2f(s.x-20, 64));
                 win.draw(inf);
             }
         }else{
@@ -369,17 +369,17 @@ int main(){
             if(al>0.02f){
                 auto s=S(R.x,R.y);
                 CircleShape halo(10);
-                halo.setOrigin(10,10);
+                halo.setOrigin(Vector2f(10,10));
                 halo.setPosition(s);
                 halo.setFillColor(Color::Transparent);
                 halo.setOutlineColor(Color(198,214,228, (Uint8)(110*al)));
                 halo.setOutlineThickness(1);
                 win.draw(halo);
                 disc(win, s, 5, Color(228,237,245,(Uint8)(255*al)), Color(142,168,192));
-                Text lab; lab.setFont(font); lab.setString("R");
+                Text lab(font); lab.setString("R");
                 lab.setCharacterSize(16); lab.setStyle(Text::Italic);
                 lab.setFillColor(Color(215,226,238,(Uint8)(255*al)));
-                lab.setPosition(s.x+10, s.y-22);
+                lab.setPosition(Vector2f(s.x+10, s.y-22));
                 win.draw(lab);
             }
         }
@@ -388,10 +388,10 @@ int main(){
         disc(win, sp, 5.4f, Color(231,238,246), Color(144,168,192));
 
         auto tag=[&](const char* name, Vector2f p, float dx){
-            Text t; t.setFont(font); t.setString(name);
+            Text t(font); t.setString(name);
             t.setCharacterSize(16); t.setStyle(Text::Italic);
             t.setFillColor(Color(215,226,238));
-            t.setPosition(p.x+dx, p.y-22);
+            t.setPosition(Vector2f(p.x+dx, p.y-22));
             win.draw(t);
         };
         tag("P", sp, 10);
@@ -399,7 +399,7 @@ int main(){
 
         // play, oben links. kein slider, nix drunter.
         RectangleShape btn(Vector2f(44,44));
-        btn.setPosition(14,14);
+        btn.setPosition(Vector2f(14,14));
         btn.setFillColor(Color(8,16,30,210));
         btn.setOutlineColor(Color(190,210,230,70));
         btn.setOutlineThickness(1);
@@ -415,10 +415,10 @@ int main(){
             // bogen als viele kleine linien, zu faul fuer arc
             float ang = u * 6.28318f;
             Vector2f c0(36,36);
-            VertexArray arc(LineStrip);
+            VertexArray arc(PrimitiveType::LineStrip);
             for(int i=0;i<=32;i++){
                 float a1 = -1.5708f + ang*i/32.f;
-                arc.append(Vertex(Vector2f(c0.x+19*cos(a1), c0.y+19*sin(a1)), Color(214,226,238)));
+                arc.append({Vector2f(c0.x+19*cos(a1), c0.y+19*sin(a1)), Color(214,226,238)});
             }
             win.draw(arc);
         }
@@ -427,9 +427,9 @@ int main(){
         string eq = "y^2 = x^3 + (" + as + ")x + (" + bs + ")";
         if(editing==1) eq += "   [a]";
         if(editing==2) eq += "   [b]";
-        Text et; et.setFont(font); et.setString(eq);
+        Text et(font); et.setString(eq);
         et.setCharacterSize(18); et.setFillColor(Color(197,211,228));
-        et.setPosition(78, 24);
+        et.setPosition(Vector2f(78, 24));
         win.draw(et);
 
         win.display();
